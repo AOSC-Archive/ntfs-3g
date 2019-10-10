@@ -41,17 +41,30 @@
 extern "C" {
 #endif
 
-#ifdef POSIXACLS
 /*
- * FUSE_CAP_DONT_MASK: don't apply umask to file mode on create operations
- * FUSE_CAP_POSIX_ACL: process Posix ACLs within the kernel
+ * We ripped these from the same-named things fuse_kernel.h. The point of not
+ * using a separate numbering like upstream libfuse does is that it greatly
+ * simplifies our job of checking for and assigning caps.
  */
-#define FUSE_CAP_DONT_MASK	(1 << 6)
-#define FUSE_CAP_POSIX_ACL	(1 << 18)
-#endif
-
-#define FUSE_CAP_BIG_WRITES	(1 << 5)
+#define FUSE_CAP_ASYNC_READ		(1 << 0)
+#define FUSE_CAP_POSIX_LOCKS	(1 << 1)
+#define FUSE_CAP_ATOMIC_O_TRUNC	(1 << 3)
+#define FUSE_CAP_EXPORT_SUPPORT	(1 << 4)
+#define FUSE_CAP_BIG_WRITES		(1 << 5)
+#define FUSE_CAP_DONT_MASK		(1 << 6)
 #define FUSE_CAP_IOCTL_DIR	(1 << 11)
+#define FUSE_CAP_AUTO_INVAL_DATA	(1 << 12)
+#define FUSE_CAP_ASYNC_DIO		(1 << 15)
+#define FUSE_CAP_PARALLEL_DIROPS    (1 << 18)
+#define FUSE_CAP_HANDLE_KILLPRIV	(1 << 19)
+#define FUSE_CAP_POSIX_ACL		(1 << 20)
+
+/* All the capacities that we care about. */
+#define FUSE_CAP_ALL (FUSE_CAP_ASYNC_READ | FUSE_CAP_POSIX_LOCKS | \
+	FUSE_CAP_ATOMIC_O_TRUNC | FUSE_CAP_EXPORT_SUPPORT | \
+	FUSE_CAP_BIG_WRITES | FUSE_CAP_DONT_MASK | FUSE_CAP_IOCTL_DIR \
+	FUSE_CAP_AUTO_INVAL_DATA | FUSE_CAP_ASYNC_DIO | \
+	FUSE_CAP_HANDLE_KILLPRIV | FUSE_CAP_POSIX_ACL)
 
 /**
  * Ioctl flags

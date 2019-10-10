@@ -94,9 +94,7 @@ static void convert_stat(const struct stat *stbuf, struct fuse_attr *attr)
     attr->atimensec = ST_ATIM_NSEC(stbuf);
     attr->mtimensec = ST_MTIM_NSEC(stbuf);
     attr->ctimensec = ST_CTIM_NSEC(stbuf);
-#ifdef POSIXACLS
-    attr->filling = 0; /* JPA trying to be safe */
-#endif
+    attr->blksize   = attr->padding = 0; /* JPA trying to be safe */
 }
 
 static void convert_attr(const struct fuse_setattr_in *attr, struct stat *stbuf)
@@ -386,7 +384,7 @@ int fuse_reply_attr(fuse_req_t req, const struct stat *attr,
     convert_stat(attr, &arg.attr);
 
     return send_reply_ok(req, &arg, (req->f->conn.proto_minor >= 12
-			? sizeof(arg) : FUSE_COMPAT_FUSE_ATTR_OUT_SIZE));
+			? sizeof(arg) : FUSE_COMPAT_ATTR_OUT_SIZE));
 }
 
 int fuse_reply_readlink(fuse_req_t req, const char *linkname)
@@ -1076,6 +1074,7 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid, const void *inarg)
     struct fuse_init_out outarg;
     struct fuse_ll *f = req->f;
     size_t bufsize = fuse_chan_bufsize(req->ch);
+    size_t outargsize = sizeof(outarg);
 
     (void) nodeid;
     if (f->debug) {
@@ -1087,6 +1086,12 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid, const void *inarg)
     }
     f->conn.proto_major = arg->major;
     f->conn.proto_minor = arg->minor;
+    f->conn.capable = 0;
+    f->conn.want = 0;
+
+    memset(&outarg, 0, sizeof(outarg));
+    outarg.major = FUSE_KERNEL_VERSION;
+    outarg.minor = FUSE_KERNEL_MINOR_VERSION;
 
     if (arg->major < 7) {
         fprintf(stderr, "fuse: unsupported protocol version: %u.%u\n",
@@ -1095,21 +1100,18 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid, const void *inarg)
         return;
     }
 
-    if (arg->major > 7 || (arg->major == 7 && arg->minor >= 6)) {
+    if (arg->major > 7) {
+	/* Wait for a second INIT request with a 7.X version */
+	send_reply_ok(req, &outarg, sizeof(outarg));
+	return;
+    }
+
+    if (arg->minor >= 6) {
         if (f->conn.async_read)
             f->conn.async_read = arg->flags & FUSE_ASYNC_READ;
         if (arg->max_readahead < f->conn.max_readahead)
             f->conn.max_readahead = arg->max_readahead;
-#ifdef POSIXACLS
-	if (arg->flags & FUSE_DONT_MASK)
-	    f->conn.capable |= FUSE_CAP_DONT_MASK;
-	if (arg->flags & FUSE_POSIX_ACL)
-	    f->conn.capable |= FUSE_CAP_POSIX_ACL;
-#endif
-	if (arg->flags & FUSE_BIG_WRITES)
-	    f->conn.capable |= FUSE_CAP_BIG_WRITES;
-	if (arg->flags & FUSE_HAS_IOCTL_DIR)
-	    f->conn.capable |= FUSE_CAP_IOCTL_DIR;
+	f->conn.capable = arg->flags & FUSE_CAP_ALL;
     } else {
         f->conn.async_read = 0;
         f->conn.max_readahead = 0;
@@ -1129,49 +1131,49 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid, const void *inarg)
     if (f->op.init)
         f->op.init(f->userdata, &f->conn);
 
-    memset(&outarg, 0, sizeof(outarg));
-    outarg.major = FUSE_KERNEL_VERSION;
-	/*
-	 * Suggest using protocol 7.18 when available, and fallback
-	 * to 7.12 or even earlier when running on an old kernel.
-	 * Protocol 7.12 has the ability to process the umask
-	 * conditionnally (as needed if POSIXACLS is set)
-	 * Protocol 7.18 has the ability to process the ioctls
-	 */
-    if (arg->major > 7 || (arg->major == 7 && arg->minor >= 18)) {
-	    outarg.minor = FUSE_KERNEL_MINOR_VERSION;
-	    if (f->conn.want & FUSE_CAP_IOCTL_DIR)
-		outarg.flags |= FUSE_HAS_IOCTL_DIR;
-#ifdef POSIXACLS
-	    if (f->conn.want & FUSE_CAP_DONT_MASK)
-		outarg.flags |= FUSE_DONT_MASK;
-	    if (f->conn.want & FUSE_CAP_POSIX_ACL)
-		outarg.flags |= FUSE_POSIX_ACL;
-#endif
-    } else {
-	/* Never use a version more recent than supported by the kernel */
-	if ((arg->major < FUSE_KERNEL_MAJOR_FALLBACK)
-	    || ((arg->major == FUSE_KERNEL_MAJOR_FALLBACK)
-		&& (arg->minor < FUSE_KERNEL_MINOR_FALLBACK))) {
-	    outarg.major = arg->major;
-	    outarg.minor = arg->minor;
-	} else {
-	    outarg.major = FUSE_KERNEL_MAJOR_FALLBACK;
-	    outarg.minor = FUSE_KERNEL_MINOR_FALLBACK;
-#ifdef POSIXACLS
-	    if (f->conn.want & FUSE_CAP_DONT_MASK)
-		outarg.flags |= FUSE_DONT_MASK;
-	    if (f->conn.want & FUSE_CAP_POSIX_ACL)
-		outarg.flags |= FUSE_POSIX_ACL;
-#endif
-    	}
+    /* Default settings for modern filesystems.
+     *
+     * Most of these capabilities were disabled by default in
+     * libfuse2 for backwards compatibility reasons. In libfuse3,
+     * we can finally enable them by default (as long as they're
+     * supported by the kernel).
+     *
+     * Note that no translation is needed here because we defined
+     * everything to be the same value in fuse_common.h.
+     */
+#define LL_SET_IF(cond, cap)             \
+    if ((cond) && (f->conn.capable & (cap))) \
+    outarg.flags |= (cap)
+    LL_SET_IF(1, FUSE_CAP_ASYNC_READ);
+    LL_SET_IF(1, FUSE_CAP_PARALLEL_DIROPS);
+    LL_SET_IF(1, FUSE_CAP_AUTO_INVAL_DATA);
+    LL_SET_IF(1, FUSE_CAP_ASYNC_DIO);
+    LL_SET_IF(1, FUSE_CAP_IOCTL_DIR);
+    LL_SET_IF(1, FUSE_CAP_ATOMIC_O_TRUNC);
+    LL_SET_IF(f->op.getlk && f->op.setlk,
+		   FUSE_CAP_POSIX_LOCKS);
+
+    /*
+     * Pass on optional things. Like POSIX ACL.
+     */
+#define LL_PASS_IF(cond, cap)             \
+    if ((cond) && (f->conn.capable & (cap)) && f->conn.want & (cap)) \
+    outarg.flags |= (cap)
+    LL_PASS_IF(1, FUSE_DONT_MASK);
+    LL_PASS_IF(1, FUSE_POSIX_ACL);
+    LL_PASS_IF(1, FUSE_CAP_BIG_WRITES);
+    /* Will be off since the actual drivers don't implement this
+     * (This is a potential security problem on libfuse3)
+     */
+    LL_PASS_IF(1, FUSE_CAP_HANDLE_KILLPRIV);
+
+    /* Never use a version more recent than supported by the kernel
+     * The negotiation should handle it, but let's better be safe.
+     */
+    if (arg->minor < outarg.minor) {
+	outarg.minor = arg->minor;
     }
-    if (f->conn.async_read)
-        outarg.flags |= FUSE_ASYNC_READ;
-    if (f->op.getlk && f->op.setlk)
-        outarg.flags |= FUSE_POSIX_LOCKS;
-    if (f->conn.want & FUSE_CAP_BIG_WRITES)
-	outarg.flags |= FUSE_BIG_WRITES;
+
     outarg.max_readahead = f->conn.max_readahead;
     outarg.max_write = f->conn.max_write;
 
@@ -1182,7 +1184,12 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid, const void *inarg)
         fprintf(stderr, "   max_write=0x%08x\n", outarg.max_write);
     }
 
-    send_reply_ok(req, &outarg, arg->minor < 5 ? 8 : sizeof(outarg));
+    if (arg->minor < 5)
+	outargsize = FUSE_COMPAT_INIT_OUT_SIZE;
+    else if (arg->minor < 23)
+	outargsize = FUSE_COMPAT_22_INIT_OUT_SIZE;
+
+    send_reply_ok(req, &outarg, outargsize);
 }
 
 static void do_destroy(fuse_req_t req, fuse_ino_t nodeid, const void *inarg)
