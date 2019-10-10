@@ -45,34 +45,13 @@ static const char *progname = "ntfs-3g-mount";
 
 static int mount_max = 1000;
 
-int drop_privs(void);
-int restore_privs(void);
+#include "priv.h"
 
-#ifdef __SOLARIS__
-
+#ifndef __SOLARIS__
 /*
  * fusermount is not implemented in fuse-lite for Solaris,
  * only the minimal functions are provided.
  */
-
-/*
- * Solaris doesn't have setfsuid/setfsgid.
- * This doesn't really matter anyway as this program shouldn't be made
- * suid on Solaris. It should instead be used via a profile with the
- * sys_mount privilege.
- */
-
-int drop_privs(void)
-{
-    return (0);
-}
-
-int restore_privs(void)
-{
-    return (0);
-}
-
-#else /* __SOLARIS__ */
 
 static const char *get_user_name(void)
 {
@@ -83,80 +62,6 @@ static const char *get_user_name(void)
         fprintf(stderr, "%s: could not determine username\n", progname);
         return NULL;
     }
-}
-
-int drop_privs(void)
-{
-	if (!getegid()) {
-
-		gid_t new_gid = getgid();
-
-		if (setresgid(-1, new_gid, getegid()) < 0) {
-			perror("priv drop: setresgid failed");
-			return -1;
-		}
-		if (getegid() != new_gid){
-			perror("dropping group privilege failed");
-			return -1;
-		}
-	}
-	
-	if (!geteuid()) {
-
-		uid_t new_uid = getuid();
-
-		if (setresuid(-1, new_uid, geteuid()) < 0) {
-			perror("priv drop: setresuid failed");
-			return -1;
-		}
-		if (geteuid() != new_uid){
-			perror("dropping user privilege failed");
-			return -1;
-		}
-	}
-	
-	return 0;
-}
-
-int restore_privs(void)
-{
-	if (geteuid()) {
-		
-		uid_t ruid, euid, suid;
-
-		if (getresuid(&ruid, &euid, &suid) < 0) {
-			perror("priv restore: getresuid failed");
-			return -1;
-		}
-		if (setresuid(-1, suid, -1) < 0) {
-			perror("priv restore: setresuid failed");
-			return -1;
-		}
-		if (geteuid() != suid) {
-			perror("restoring privilege failed");
-			return -1;
-		}
-	}
-
-	if (getegid()) {
-
-		gid_t rgid, egid, sgid;
-
-		if (getresgid(&rgid, &egid, &sgid) < 0) {
-			perror("priv restore: getresgid failed");
-			return -1;
-		}
-		if (setresgid(-1, sgid, -1) < 0) {
-			perror("priv restore: setresgid failed");
-			return -1;
-		}
-		if (getegid() != sgid){
-			perror("restoring group privilege failed");
-			return -1;
-		}
-	}
-	
-	return 0;
 }
 
 #ifndef IGNORE_MTAB
@@ -699,7 +604,7 @@ int fusermount(int unmount, int quiet, int lazy, const char *opts,
 out:    
     umask(old_umask);
     free(mnt);
-    return res;	    
+    return res;
 }
 
 #endif /* __SOLARIS__ */

@@ -279,29 +279,8 @@ static const char ntfs_bad_reparse[] = "unsupported reparse point";
 int drop_privs(void);
 int restore_privs(void);
 #else
-/*
- * setuid and setgid root ntfs-3g denies to start with external FUSE, 
- * therefore the below functions are no-op in such case.
- */
-static int drop_privs(void)    { return 0; }
-#if defined(linux) || defined(__uClinux__)
-static int restore_privs(void) { return 0; }
+#include "../libfuse-lite/priv.h"
 #endif
-
-static const char *setuid_msg =
-"Mount is denied because setuid and setgid root ntfs-3g is insecure with the\n"
-"external FUSE library. Either remove the setuid/setgid bit from the binary\n"
-"or rebuild NTFS-3G with integrated FUSE support and make it setuid root.\n"
-"Please see more information at\n"
-"http://tuxera.com/community/ntfs-3g-faq/#unprivileged\n";
-
-static const char *unpriv_fuseblk_msg =
-"Unprivileged user can not mount NTFS block devices using the external FUSE\n"
-"library. Either mount the volume as root, or rebuild NTFS-3G with integrated\n"
-"FUSE support and make it setuid root. Please see more information at\n"
-"http://tuxera.com/community/ntfs-3g-faq/#unprivileged\n";
-#endif	
-
 
 static void ntfs_fuse_update_times(ntfs_inode *ni, ntfs_time_update_flags mask)
 {
@@ -2970,7 +2949,7 @@ static void ntfs_fuse_bmap(fuse_req_t req, fuse_ino_t ino, size_t blocksize,
 	ntfs_attr *na;
 	LCN lcn;
 	uint64_t lidx = 0;
-	int ret = 0; 
+	int ret = 0;
 	int cl_per_bl = ctx->vol->cluster_size / blocksize;
 
 	if (blocksize > ctx->vol->cluster_size) {
@@ -4282,12 +4261,6 @@ int main(int argc, char *argv[])
 			close(fd);
 	} while (fd >= 0 && fd <= 2);
 
-#ifndef FUSE_INTERNAL
-	if ((getuid() != geteuid()) || (getgid() != getegid())) {
-		fprintf(stderr, "%s", setuid_msg);
-		return NTFS_VOLUME_INSECURE;
-	}
-#endif
 	if (drop_privs())
 		return NTFS_VOLUME_NO_PRIVILEGE;
         
@@ -4361,7 +4334,7 @@ int main(int argc, char *argv[])
 
 	if (drop_privs())
 		goto err_out;
-#endif  
+#endif
 	if (stat(opts.device, &sbuf)) {
 		ntfs_log_perror("Failed to access '%s'", opts.device);
 		err = NTFS_VOLUME_NO_PRIVILEGE;
@@ -4374,13 +4347,6 @@ int main(int argc, char *argv[])
 		ctx->blkdev = TRUE;
 #endif
 
-#ifndef FUSE_INTERNAL
-	if (getuid() && ctx->blkdev) {
-		ntfs_log_error("%s", unpriv_fuseblk_msg);
-		err = NTFS_VOLUME_NO_PRIVILEGE;
-		goto err2;
-	}
-#endif
 	err = ntfs_open(opts.device);
 	if (err)
 		goto err_out;
