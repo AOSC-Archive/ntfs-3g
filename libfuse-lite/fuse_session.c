@@ -7,7 +7,7 @@
 */
 
 #include "config.h"
-#include "fuse_lowlevel.h"
+#include "fuse_i.h"
 #include "fuse_lowlevel_compat.h"
 
 #include <stdio.h>
@@ -15,28 +15,6 @@
 #include <string.h>
 #include <assert.h>
 #include <errno.h>
-
-struct fuse_session {
-    struct fuse_session_ops op;
-
-    void *data;
-
-    volatile int exited;
-
-    struct fuse_chan *ch;
-};
-
-struct fuse_chan {
-    struct fuse_chan_ops op;
-
-    struct fuse_session *se;
-
-    int fd;
-
-    size_t bufsize;
-
-    void *data;
-};
 
 struct fuse_session *fuse_session_new(struct fuse_session_ops *op, void *data)
 {
@@ -140,26 +118,6 @@ struct fuse_chan *fuse_chan_new(struct fuse_chan_ops *op, int fd,
                                 size_t bufsize, void *data)
 {
     return fuse_chan_new_common(op, fd, bufsize, data);
-}
-
-int fuse_chan_fd(struct fuse_chan *ch)
-{
-    return ch->fd;
-}
-
-size_t fuse_chan_bufsize(struct fuse_chan *ch)
-{
-    return ch->bufsize;
-}
-
-void *fuse_chan_data(struct fuse_chan *ch)
-{
-    return ch->data;
-}
-
-struct fuse_session *fuse_chan_session(struct fuse_chan *ch)
-{
-    return ch->se;
 }
 
 int fuse_chan_recv(struct fuse_chan **chp, char *buf, size_t size)

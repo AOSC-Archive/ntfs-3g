@@ -8,6 +8,7 @@
 
 #include "config.h"
 #include "fuse_lowlevel.h"
+#include "fuse_i.h"
 
 #include <stdio.h>
 #include <stdlib.h>

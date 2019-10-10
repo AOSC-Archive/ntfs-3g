@@ -328,9 +328,8 @@ marked for compression. Existing compressed files can still be read and
 updated.
 .TP
 .B big_writes
-This option prevents fuse from splitting write buffers into 4K chunks,
-enabling big write buffers to be transferred from the application in a
-single step (up to some system limit, generally 128K bytes).
+This option is deprecated. It is now enabled by default, following upstream
+libfuse changes.
 .TP
 .B debug
 Makes ntfs-3g to print a lot of debug output from libntfs-3g and FUSE.

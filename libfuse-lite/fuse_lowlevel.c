@@ -1073,7 +1073,7 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid, const void *inarg)
     const struct fuse_init_in *arg = (const struct fuse_init_in *) inarg;
     struct fuse_init_out outarg;
     struct fuse_ll *f = req->f;
-    size_t bufsize = fuse_chan_bufsize(req->ch);
+    size_t bufsize = req->ch->bufsize;
     size_t outargsize = sizeof(outarg);
 
     (void) nodeid;
@@ -1112,6 +1112,14 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid, const void *inarg)
         if (arg->max_readahead < f->conn.max_readahead)
             f->conn.max_readahead = arg->max_readahead;
 	f->conn.capable = arg->flags & FUSE_CAP_ALL;
+	if (!(arg->flags & FUSE_MAX_PAGES)) {
+            size_t max_bufsize =
+        	FUSE_DEFAULT_MAX_PAGES_PER_REQ * getpagesize()
+        	+ FUSE_BUFFER_HEADER_SIZE;
+            if (bufsize > max_bufsize) {
+            	bufsize = max_bufsize;
+            }
+	}
     } else {
         f->conn.async_read = 0;
         f->conn.max_readahead = 0;
@@ -1123,9 +1131,10 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid, const void *inarg)
         bufsize = FUSE_MIN_READ_BUFFER;
     }
 
-    bufsize -= 4096;
-    if (bufsize < f->conn.max_write)
-        f->conn.max_write = bufsize;
+    req->ch->bufsize = bufsize;
+
+    if (f->conn.max_write > bufsize - FUSE_BUFFER_HEADER_SIZE)
+	f->conn.max_write = bufsize - FUSE_BUFFER_HEADER_SIZE;
 
     f->got_init = 1;
     if (f->op.init)
@@ -1172,6 +1181,13 @@ static void do_init(fuse_req_t req, fuse_ino_t nodeid, const void *inarg)
      */
     if (arg->minor < outarg.minor) {
 	outarg.minor = arg->minor;
+    }
+    if (f->conn.max_write < bufsize - FUSE_BUFFER_HEADER_SIZE) {
+	req->ch->bufsize = f->conn.max_write + FUSE_BUFFER_HEADER_SIZE;
+    }
+    if (arg->flags & FUSE_MAX_PAGES) {
+	outarg.flags |= FUSE_MAX_PAGES;
+	outarg.max_pages = (f->conn.max_write - 1) / getpagesize() + 1;
     }
 
     outarg.max_readahead = f->conn.max_readahead;

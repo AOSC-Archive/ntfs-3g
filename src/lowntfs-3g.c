@@ -604,10 +604,9 @@ static void ntfs_init(void *userdata __attribute__((unused)),
 	conn->want |= FUSE_CAP_POSIX_ACL;
 #endif /* POSIXACLS & KERNELACLS */
 #ifdef FUSE_CAP_BIG_WRITES
-	if (ctx->big_writes
-	    && ((ctx->vol->nr_clusters << ctx->vol->cluster_size_bits)
-			>= SAFE_CAPACITY_FOR_BIG_WRITES))
-		conn->want |= FUSE_CAP_BIG_WRITES;
+	conn->want |= FUSE_CAP_BIG_WRITES;
+	conn->max_write = SAFE_WRITE_SIZE_MAX(
+		ctx->vol->nr_clusters << ctx->vol->cluster_size_bits);
 #endif
 #ifdef FUSE_CAP_IOCTL_DIR
 	conn->want |= FUSE_CAP_IOCTL_DIR;
@@ -2982,7 +2981,7 @@ static void ntfs_fuse_bmap(fuse_req_t req, fuse_ino_t ino, size_t blocksize,
         
 	lcn = ntfs_rl_vcn_to_lcn(na->rl, vidx / cl_per_bl);
 	lidx = (lcn > 0) ? lcn * cl_per_bl + vidx % cl_per_bl : 0;
-        
+
 close_attr:
 	ntfs_attr_close(na);
 close_inode:

@@ -662,10 +662,9 @@ static void *ntfs_init(struct fuse_conn_info *conn)
 	conn->want |= FUSE_CAP_POSIX_ACL;
 #endif /* POSIXACLS & KERNELACLS */
 #ifdef FUSE_CAP_BIG_WRITES
-	if (ctx->big_writes
-	    && ((ctx->vol->nr_clusters << ctx->vol->cluster_size_bits)
-			>= SAFE_CAPACITY_FOR_BIG_WRITES))
-		conn->want |= FUSE_CAP_BIG_WRITES;
+	conn->want |= FUSE_CAP_BIG_WRITES;
+	conn->max_write = SAFE_WRITE_SIZE_MAX(
+		ctx->vol->nr_clusters << ctx->vol->cluster_size_bits);
 #endif
 #ifdef FUSE_CAP_IOCTL_DIR
 	conn->want |= FUSE_CAP_IOCTL_DIR;

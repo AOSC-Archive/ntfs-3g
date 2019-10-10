@@ -1343,38 +1343,6 @@ struct fuse_chan *fuse_chan_new(struct fuse_chan_ops *op, int fd,
 				size_t bufsize, void *data);
 
 /**
- * Query the file descriptor of the channel
- *
- * @param ch the channel
- * @return the file descriptor passed to fuse_chan_new()
- */
-int fuse_chan_fd(struct fuse_chan *ch);
-
-/**
- * Query the minimal receive buffer size
- *
- * @param ch the channel
- * @return the buffer size passed to fuse_chan_new()
- */
-size_t fuse_chan_bufsize(struct fuse_chan *ch);
-
-/**
- * Query the user data
- *
- * @param ch the channel
- * @return the user data passed to fuse_chan_new()
- */
-void *fuse_chan_data(struct fuse_chan *ch);
-
-/**
- * Query the session to which this channel is assigned
- *
- * @param ch the channel
- * @return the session, or NULL if the channel is not assigned
- */
-struct fuse_session *fuse_chan_session(struct fuse_chan *ch);
-
-/**
  * Receive a raw request
  *
  * A return value of -ENODEV means, that the filesystem was unmounted
