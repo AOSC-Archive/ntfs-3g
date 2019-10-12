@@ -45,7 +45,7 @@ canonicalize_dm_name(const char *ptname, char *canonical)
 {
 	FILE	*f;
 	size_t	sz;
-	char	path[MAPPERNAMELTH + 24];
+	char	path[MAPPERNAMELTH + 28];
 	char	name[MAPPERNAMELTH + 16];
 	char	*res = NULL;
 
